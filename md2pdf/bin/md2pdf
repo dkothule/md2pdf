@@ -1,0 +1,510 @@
+#!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Deepak Kothule
+# Standalone Markdown -> PDF converter with high-resolution Mermaid diagrams.
+set -euo pipefail
+
+resolve_script_dir() {
+  local source="${BASH_SOURCE[0]}"
+  while [[ -L "$source" ]]; do
+    local dir
+    dir="$(cd -P "$(dirname "$source")" && pwd)"
+    source="$(readlink "$source")"
+    if [[ "$source" != /* ]]; then
+      source="$dir/$source"
+    fi
+  done
+  cd -P "$(dirname "$source")" && pwd
+}
+
+trim_ws() {
+  printf '%s' "$1" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
+}
+
+strip_outer_quotes() {
+  local value="$1"
+  if [[ ${#value} -ge 2 ]]; then
+    local first_char="${value:0:1}"
+    local last_char="${value: -1}"
+    if [[ "$first_char" == "\"" && "$last_char" == "\"" ]]; then
+      value="${value:1:${#value}-2}"
+    elif [[ "$first_char" == "'" && "$last_char" == "'" ]]; then
+      value="${value:1:${#value}-2}"
+    fi
+  fi
+  printf '%s' "$value"
+}
+
+normalize_bool() {
+  local value
+  value="$(trim_ws "$1")"
+  value="$(printf '%s' "$value" | tr '[:upper:]' '[:lower:]')"
+  case "$value" in
+    1|true|yes|on) printf 'true' ;;
+    0|false|no|off) printf 'false' ;;
+    *)
+      echo "Error: invalid boolean value '$1'. Use true/false." >&2
+      exit 1
+      ;;
+  esac
+}
+
+resolve_config_path() {
+  local config_file="$1"
+  local raw_value="$2"
+  if [[ "$raw_value" == /* ]]; then
+    printf '%s' "$raw_value"
+    return
+  fi
+  if [[ "$raw_value" == */* ]]; then
+    local cfg_dir
+    cfg_dir="$(cd "$(dirname "$config_file")" && pwd)"
+    printf '%s' "$cfg_dir/$raw_value"
+    return
+  fi
+  printf '%s' "$raw_value"
+}
+
+is_executable_cmd() {
+  local cmd="$1"
+  if [[ "$cmd" == */* ]]; then
+    [[ -x "$cmd" ]]
+  else
+    command -v "$cmd" >/dev/null 2>&1
+  fi
+}
+
+require_cmd() {
+  local cmd="$1"
+  local install_hint="$2"
+  if ! is_executable_cmd "$cmd"; then
+    echo "Error: required command not found: $cmd" >&2
+    echo "$install_hint" >&2
+    exit 1
+  fi
+}
+
+load_config_file() {
+  local config_file="$1"
+  local line_no=0
+  local line=""
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    line_no=$((line_no + 1))
+    line="$(trim_ws "$line")"
+    if [[ -z "$line" || "${line:0:1}" == "#" ]]; then
+      continue
+    fi
+    if [[ "$line" != *=* ]]; then
+      echo "Warning: ignoring invalid line in $config_file:$line_no" >&2
+      continue
+    fi
+
+    local key
+    local value
+    key="$(trim_ws "${line%%=*}")"
+    value="$(trim_ws "${line#*=}")"
+    value="$(strip_outer_quotes "$value")"
+
+    case "$key" in
+      PDF_ENGINE) PDF_ENGINE="$value" ;;
+      PANDOC_COLUMNS) PANDOC_COLUMNS="$value" ;;
+      LR_MARGIN) LR_MARGIN="$value" ;;
+      TB_MARGIN) TB_MARGIN="$value" ;;
+      CLEANUP_MERMAID_ASSETS)
+        CLEANUP_MERMAID_ASSETS="$(normalize_bool "$value")"
+        ;;
+      MERMAID_ASSET_PREFIX) MERMAID_ASSET_PREFIX="$value" ;;
+      FILTER) FILTER="$(resolve_config_path "$config_file" "$value")" ;;
+      TABLE_STYLE) TABLE_STYLE="$(resolve_config_path "$config_file" "$value")" ;;
+      MERMAID_BIN) MERMAID_BIN="$(resolve_config_path "$config_file" "$value")" ;;
+      MERMAID_CONFIG) MERMAID_CONFIG="$(resolve_config_path "$config_file" "$value")" ;;
+      MERMAID_LATEX_FORMAT) MERMAID_LATEX_FORMAT="$value" ;;
+      MERMAID_PDF_FIT) MERMAID_PDF_FIT="$(normalize_bool "$value")" ;;
+      MERMAID_AUTO_PDF_FALLBACK) MERMAID_AUTO_PDF_FALLBACK="$(normalize_bool "$value")" ;;
+      PYTHON) PYTHON="$(resolve_config_path "$config_file" "$value")" ;;
+      PUPPETEER_CFG) PUPPETEER_CFG="$(resolve_config_path "$config_file" "$value")" ;;
+      *)
+        echo "Warning: unknown config key '$key' in $config_file:$line_no" >&2
+        ;;
+    esac
+  done < "$config_file"
+}
+
+cleanup_mermaid_assets() {
+  if [[ "${HAS_MERMAID:-false}" != "true" ]]; then
+    return
+  fi
+  if [[ "${CLEANUP_MERMAID_ASSETS}" != "true" ]]; then
+    return
+  fi
+  if [[ -n "${MERMAID_ASSET_DIR_ABS:-}" && -d "$MERMAID_ASSET_DIR_ABS" ]]; then
+    rm -rf "$MERMAID_ASSET_DIR_ABS"
+  fi
+}
+
+get_cli_version() {
+  local pkg="$PROJECT_ROOT/package.json"
+  if [[ -f "$pkg" ]]; then
+    sed -n 's/^[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$pkg" | head -n 1
+    return
+  fi
+  echo "unknown"
+}
+
+init_config_file() {
+  local template="$PROJECT_ROOT/md2pdf.config.example"
+  local target="$INIT_CONFIG_PATH"
+  if [[ -z "$target" ]]; then
+    target="$HOME/.config/md2pdf/config.env"
+  elif [[ "$target" != /* ]]; then
+    target="$ORIG_CWD/$target"
+  fi
+
+  if [[ ! -f "$template" ]]; then
+    echo "Error: config template not found: $template" >&2
+    exit 1
+  fi
+
+  mkdir -p "$(dirname "$target")"
+  if [[ -e "$target" && "$INIT_FORCE" -ne 1 ]]; then
+    echo "Error: config file already exists: $target" >&2
+    echo "Use --force to overwrite." >&2
+    exit 1
+  fi
+
+  cp "$template" "$target"
+  echo "Created config file: $target"
+}
+
+usage() {
+  cat <<EOF
+Usage:
+  $(basename "$0") <input.md> [-o output.pdf] [--config path]
+  $(basename "$0") --init [path] [--force]
+  $(basename "$0") --version
+
+Converts Markdown to PDF and renders Mermaid code blocks as vector assets for high-resolution output.
+
+Options:
+  -o, --output <file>            Output PDF path
+  --config <file>                Additional config file to load
+  --init [path]                  Create default config file (default: \$HOME/.config/md2pdf/config.env)
+  --force                        Overwrite existing config file when used with --init
+  --keep-mermaid-assets          Keep generated Mermaid SVG/MMD assets
+  --cleanup-mermaid-assets       Remove generated Mermaid assets after conversion (default)
+  -v, --version                  Show version
+  -h, --help                     Show this help
+
+Mermaid defaults:
+  MERMAID_CONFIG uses bundled assets/mermaid.config.json.
+  This disables flowchart htmlLabels for PDF-safe text rendering.
+  MERMAID_LATEX_FORMAT defaults to "svg" for high-resolution vector diagrams.
+  MERMAID_PDF_FIT defaults to "true" so Mermaid PDF assets use tight page bounds.
+  MERMAID_AUTO_PDF_FALLBACK defaults to "true" for foreignObject label fallback.
+
+Config loading order:
+  1) $HOME/.config/md2pdf/config.env
+  2) <input-dir>/.md2pdfrc
+  3) --config <file> (if provided)
+
+Environment variables override config values when set.
+See md2pdf.config.example for supported keys.
+EOF
+}
+
+script_dir="$(resolve_script_dir)"
+PROJECT_ROOT="$(cd "$script_dir/.." && pwd)"
+ORIG_CWD="$(pwd)"
+
+# Capture environment overrides before defaults are initialized.
+HAS_ENV_PDF_ENGINE=0
+HAS_ENV_PANDOC_COLUMNS=0
+HAS_ENV_LR_MARGIN=0
+HAS_ENV_TB_MARGIN=0
+HAS_ENV_CLEANUP=0
+HAS_ENV_ASSET_PREFIX=0
+HAS_ENV_FILTER=0
+HAS_ENV_TABLE_STYLE=0
+HAS_ENV_MERMAID_BIN=0
+HAS_ENV_MERMAID_CONFIG=0
+HAS_ENV_MERMAID_LATEX_FORMAT=0
+HAS_ENV_MERMAID_PDF_FIT=0
+HAS_ENV_MERMAID_AUTO_PDF_FALLBACK=0
+HAS_ENV_PYTHON=0
+HAS_ENV_PUPPETEER_CFG=0
+
+ENV_PDF_ENGINE=""
+ENV_PANDOC_COLUMNS=""
+ENV_LR_MARGIN=""
+ENV_TB_MARGIN=""
+ENV_CLEANUP=""
+ENV_ASSET_PREFIX=""
+ENV_FILTER=""
+ENV_TABLE_STYLE=""
+ENV_MERMAID_BIN=""
+ENV_MERMAID_CONFIG=""
+ENV_MERMAID_LATEX_FORMAT=""
+ENV_MERMAID_PDF_FIT=""
+ENV_MERMAID_AUTO_PDF_FALLBACK=""
+ENV_PYTHON=""
+ENV_PUPPETEER_CFG=""
+
+if [[ -n "${PDF_ENGINE+x}" ]]; then HAS_ENV_PDF_ENGINE=1; ENV_PDF_ENGINE="$PDF_ENGINE"; fi
+if [[ -n "${PANDOC_COLUMNS+x}" ]]; then HAS_ENV_PANDOC_COLUMNS=1; ENV_PANDOC_COLUMNS="$PANDOC_COLUMNS"; fi
+if [[ -n "${LR_MARGIN+x}" ]]; then HAS_ENV_LR_MARGIN=1; ENV_LR_MARGIN="$LR_MARGIN"; fi
+if [[ -n "${TB_MARGIN+x}" ]]; then HAS_ENV_TB_MARGIN=1; ENV_TB_MARGIN="$TB_MARGIN"; fi
+if [[ -n "${CLEANUP_MERMAID_ASSETS+x}" ]]; then HAS_ENV_CLEANUP=1; ENV_CLEANUP="$CLEANUP_MERMAID_ASSETS"; fi
+if [[ -n "${MERMAID_ASSET_PREFIX+x}" ]]; then HAS_ENV_ASSET_PREFIX=1; ENV_ASSET_PREFIX="$MERMAID_ASSET_PREFIX"; fi
+if [[ -n "${FILTER+x}" ]]; then HAS_ENV_FILTER=1; ENV_FILTER="$FILTER"; fi
+if [[ -n "${TABLE_STYLE+x}" ]]; then HAS_ENV_TABLE_STYLE=1; ENV_TABLE_STYLE="$TABLE_STYLE"; fi
+if [[ -n "${MERMAID_BIN+x}" ]]; then HAS_ENV_MERMAID_BIN=1; ENV_MERMAID_BIN="$MERMAID_BIN"; fi
+if [[ -n "${MERMAID_CONFIG+x}" ]]; then HAS_ENV_MERMAID_CONFIG=1; ENV_MERMAID_CONFIG="$MERMAID_CONFIG"; fi
+if [[ -n "${MERMAID_LATEX_FORMAT+x}" ]]; then HAS_ENV_MERMAID_LATEX_FORMAT=1; ENV_MERMAID_LATEX_FORMAT="$MERMAID_LATEX_FORMAT"; fi
+if [[ -n "${MERMAID_PDF_FIT+x}" ]]; then HAS_ENV_MERMAID_PDF_FIT=1; ENV_MERMAID_PDF_FIT="$MERMAID_PDF_FIT"; fi
+if [[ -n "${MERMAID_AUTO_PDF_FALLBACK+x}" ]]; then HAS_ENV_MERMAID_AUTO_PDF_FALLBACK=1; ENV_MERMAID_AUTO_PDF_FALLBACK="$MERMAID_AUTO_PDF_FALLBACK"; fi
+if [[ -n "${PYTHON+x}" ]]; then HAS_ENV_PYTHON=1; ENV_PYTHON="$PYTHON"; fi
+if [[ -n "${PUPPETEER_CFG+x}" ]]; then HAS_ENV_PUPPETEER_CFG=1; ENV_PUPPETEER_CFG="$PUPPETEER_CFG"; fi
+
+# Defaults
+FILTER="$PROJECT_ROOT/lib/run_pandoc_mermaid_filter.sh"
+TABLE_STYLE="$PROJECT_ROOT/assets/table-style.tex"
+MERMAID_CONFIG="$PROJECT_ROOT/assets/mermaid.config.json"
+MERMAID_LATEX_FORMAT="svg"
+MERMAID_PDF_FIT="true"
+MERMAID_AUTO_PDF_FALLBACK="true"
+PDF_ENGINE="xelatex"
+PANDOC_COLUMNS="200"
+LR_MARGIN="0.7in"
+TB_MARGIN="0.5in"
+CLEANUP_MERMAID_ASSETS="true"
+MERMAID_ASSET_PREFIX="md2pdf-mermaid"
+PUPPETEER_CFG=""
+
+PYTHON="python3"
+if [[ -x "$PROJECT_ROOT/.venv/bin/python" ]]; then
+  PYTHON="$PROJECT_ROOT/.venv/bin/python"
+fi
+MERMAID_BIN="mmdc"
+if [[ -x "$PROJECT_ROOT/node_modules/.bin/mmdc" ]]; then
+  MERMAID_BIN="$PROJECT_ROOT/node_modules/.bin/mmdc"
+fi
+
+INPUT=""
+OUTPUT=""
+CONFIG_PATH=""
+CLI_CLEANUP_OVERRIDE=""
+INIT_CONFIG=0
+INIT_CONFIG_PATH=""
+INIT_FORCE=0
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    -v|--version)
+      echo "md2pdf $(get_cli_version)"
+      exit 0
+      ;;
+    --init)
+      INIT_CONFIG=1
+      if [[ $# -ge 2 && "${2:0:1}" != "-" ]]; then
+        INIT_CONFIG_PATH="$2"
+        shift 2
+      else
+        shift
+      fi
+      ;;
+    --force)
+      INIT_FORCE=1
+      shift
+      ;;
+    -o|--output)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: missing value for $1." >&2
+        exit 1
+      fi
+      OUTPUT="$2"
+      shift 2
+      ;;
+    --config)
+      if [[ $# -lt 2 ]]; then
+        echo "Error: missing value for --config." >&2
+        exit 1
+      fi
+      CONFIG_PATH="$2"
+      shift 2
+      ;;
+    --keep-mermaid-assets)
+      CLI_CLEANUP_OVERRIDE="false"
+      shift
+      ;;
+    --cleanup-mermaid-assets)
+      CLI_CLEANUP_OVERRIDE="true"
+      shift
+      ;;
+    -*)
+      echo "Error: unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [[ -n "$INPUT" ]]; then
+        echo "Error: multiple input files provided. Pass exactly one Markdown file." >&2
+        exit 1
+      fi
+      INPUT="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ "$INIT_CONFIG" -eq 1 ]]; then
+  if [[ -n "$INPUT" ]]; then
+    echo "Error: --init cannot be used with an input file." >&2
+    exit 1
+  fi
+  init_config_file
+  exit 0
+fi
+
+if [[ -z "$INPUT" ]]; then
+  echo "Error: no input file provided." >&2
+  usage >&2
+  exit 1
+fi
+
+if [[ "$INPUT" != /* ]]; then
+  INPUT="$ORIG_CWD/$INPUT"
+fi
+if [[ ! -f "$INPUT" ]]; then
+  echo "Error: file not found: $INPUT" >&2
+  exit 1
+fi
+
+INPUT_ABS="$(cd "$(dirname "$INPUT")" && pwd)/$(basename "$INPUT")"
+INPUT_DIR="$(dirname "$INPUT_ABS")"
+INPUT_FILE="$(basename "$INPUT_ABS")"
+
+GLOBAL_CONFIG="$HOME/.config/md2pdf/config.env"
+INPUT_DIR_CONFIG="$INPUT_DIR/.md2pdfrc"
+if [[ -f "$GLOBAL_CONFIG" ]]; then
+  load_config_file "$GLOBAL_CONFIG"
+fi
+if [[ -f "$INPUT_DIR_CONFIG" ]]; then
+  load_config_file "$INPUT_DIR_CONFIG"
+fi
+if [[ -n "$CONFIG_PATH" ]]; then
+  if [[ "$CONFIG_PATH" != /* ]]; then
+    CONFIG_PATH="$ORIG_CWD/$CONFIG_PATH"
+  fi
+  if [[ ! -f "$CONFIG_PATH" ]]; then
+    echo "Error: config file not found: $CONFIG_PATH" >&2
+    exit 1
+  fi
+  load_config_file "$CONFIG_PATH"
+fi
+
+# Re-apply environment overrides with highest precedence.
+if [[ $HAS_ENV_PDF_ENGINE -eq 1 ]]; then PDF_ENGINE="$ENV_PDF_ENGINE"; fi
+if [[ $HAS_ENV_PANDOC_COLUMNS -eq 1 ]]; then PANDOC_COLUMNS="$ENV_PANDOC_COLUMNS"; fi
+if [[ $HAS_ENV_LR_MARGIN -eq 1 ]]; then LR_MARGIN="$ENV_LR_MARGIN"; fi
+if [[ $HAS_ENV_TB_MARGIN -eq 1 ]]; then TB_MARGIN="$ENV_TB_MARGIN"; fi
+if [[ $HAS_ENV_CLEANUP -eq 1 ]]; then CLEANUP_MERMAID_ASSETS="$(normalize_bool "$ENV_CLEANUP")"; fi
+if [[ $HAS_ENV_ASSET_PREFIX -eq 1 ]]; then MERMAID_ASSET_PREFIX="$ENV_ASSET_PREFIX"; fi
+if [[ $HAS_ENV_FILTER -eq 1 ]]; then FILTER="$ENV_FILTER"; fi
+if [[ $HAS_ENV_TABLE_STYLE -eq 1 ]]; then TABLE_STYLE="$ENV_TABLE_STYLE"; fi
+if [[ $HAS_ENV_MERMAID_BIN -eq 1 ]]; then MERMAID_BIN="$ENV_MERMAID_BIN"; fi
+if [[ $HAS_ENV_MERMAID_CONFIG -eq 1 ]]; then MERMAID_CONFIG="$ENV_MERMAID_CONFIG"; fi
+if [[ $HAS_ENV_MERMAID_LATEX_FORMAT -eq 1 ]]; then MERMAID_LATEX_FORMAT="$ENV_MERMAID_LATEX_FORMAT"; fi
+if [[ $HAS_ENV_MERMAID_PDF_FIT -eq 1 ]]; then MERMAID_PDF_FIT="$(normalize_bool "$ENV_MERMAID_PDF_FIT")"; fi
+if [[ $HAS_ENV_MERMAID_AUTO_PDF_FALLBACK -eq 1 ]]; then MERMAID_AUTO_PDF_FALLBACK="$(normalize_bool "$ENV_MERMAID_AUTO_PDF_FALLBACK")"; fi
+if [[ $HAS_ENV_PYTHON -eq 1 ]]; then PYTHON="$ENV_PYTHON"; fi
+if [[ $HAS_ENV_PUPPETEER_CFG -eq 1 ]]; then PUPPETEER_CFG="$ENV_PUPPETEER_CFG"; fi
+
+if [[ -n "$CLI_CLEANUP_OVERRIDE" ]]; then
+  CLEANUP_MERMAID_ASSETS="$CLI_CLEANUP_OVERRIDE"
+fi
+
+MERMAID_LATEX_FORMAT="$(printf '%s' "$MERMAID_LATEX_FORMAT" | tr '[:upper:]' '[:lower:]')"
+case "$MERMAID_LATEX_FORMAT" in
+  pdf|svg|png) ;;
+  *)
+    echo "Error: MERMAID_LATEX_FORMAT must be one of: pdf, svg, png." >&2
+    exit 1
+    ;;
+esac
+
+if [[ -z "$FILTER" || ! -x "$FILTER" ]]; then
+  echo "Error: filter script is not executable: $FILTER" >&2
+  exit 1
+fi
+if [[ -n "$TABLE_STYLE" && ! -f "$TABLE_STYLE" ]]; then
+  echo "Error: table style file not found: $TABLE_STYLE" >&2
+  exit 1
+fi
+
+require_cmd "pandoc" "Install pandoc first (or run ./install-system-deps.sh)."
+require_cmd "$PDF_ENGINE" "Install '$PDF_ENGINE' or set PDF_ENGINE in config."
+require_cmd "$PYTHON" "Install Python 3 (or run ./setup-local-deps.sh)."
+
+if [[ -z "$OUTPUT" ]]; then
+  case "$INPUT_ABS" in
+    *.md) OUTPUT="${INPUT_ABS%.md}.pdf" ;;
+    *) OUTPUT="$INPUT_ABS.pdf" ;;
+  esac
+elif [[ "$OUTPUT" != /* ]]; then
+  OUTPUT="$ORIG_CWD/$OUTPUT"
+fi
+
+HAS_MERMAID="false"
+if grep -Eq '^[[:space:]]*```[[:space:]]*mermaid([[:space:]]|$)' "$INPUT_ABS"; then
+  HAS_MERMAID="true"
+  require_cmd "$MERMAID_BIN" "Install Mermaid CLI via npm (or run ./setup-local-deps.sh)."
+  if [[ -n "$MERMAID_CONFIG" && ! -f "$MERMAID_CONFIG" ]]; then
+    echo "Error: Mermaid config file not found: $MERMAID_CONFIG" >&2
+    exit 1
+  fi
+  RUN_ID="$(date +%s)-$$"
+  MERMAID_IMAGE_PREFIX="${MERMAID_ASSET_PREFIX}-${RUN_ID}"
+  export MERMAID_IMAGE_PREFIX
+  MERMAID_ASSET_DIR_ABS="$INPUT_DIR/${MERMAID_IMAGE_PREFIX}-images"
+  trap cleanup_mermaid_assets EXIT
+fi
+
+export MERMAID_BIN
+if [[ -n "$MERMAID_CONFIG" ]]; then
+  export MERMAID_CONFIG
+fi
+export MERMAID_LATEX_FORMAT
+export MERMAID_PDF_FIT
+export MERMAID_AUTO_PDF_FALLBACK
+export PYTHON
+if [[ -n "$PUPPETEER_CFG" ]]; then
+  export PUPPETEER_CFG
+fi
+
+pandoc_args=(
+  "$INPUT_FILE"
+  -o "$OUTPUT"
+  --resource-path=.
+  --filter "$FILTER"
+  --pdf-engine="$PDF_ENGINE"
+  --columns="$PANDOC_COLUMNS"
+  -V "geometry:left=$LR_MARGIN"
+  -V "geometry:right=$LR_MARGIN"
+  -V "geometry:top=$TB_MARGIN"
+  -V "geometry:bottom=$TB_MARGIN"
+)
+if [[ -n "$TABLE_STYLE" ]]; then
+  pandoc_args+=( -H "$TABLE_STYLE" )
+fi
+
+cd "$INPUT_DIR"
+pandoc "${pandoc_args[@]}"
+
+echo "PDF created: $OUTPUT"
+if [[ "$HAS_MERMAID" == "true" && "$CLEANUP_MERMAID_ASSETS" != "true" ]]; then
+  echo "Mermaid assets kept at: $MERMAID_ASSET_DIR_ABS"
+fi

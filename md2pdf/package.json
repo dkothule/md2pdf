@@ -1,0 +1,36 @@
+{
+  "name": "@dkothule/md2pdf",
+  "version": "1.0.0",
+  "description": "Markdown to PDF converter with high-resolution Mermaid diagram rendering",
+  "author": "Deepak Kothule",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "LICENSE",
+    "README.md",
+    "bin/",
+    "lib/pandoc_mermaid_filter.py",
+    "lib/run_pandoc_mermaid_filter.sh",
+    "assets/table-style.tex",
+    "assets/mermaid.config.json",
+    "scripts/",
+    "docs/ARCHITECTURE.md",
+    "md2pdf.config.example",
+    "install-system-deps.sh",
+    "setup-local-deps.sh",
+    "requirements.txt"
+  ],
+  "bin": {
+    "md2pdf": "./bin/md2pdf",
+    "md2pdf-install-finder-action": "./scripts/install_md2pdf_quick_action.sh",
+    "md2pdf-uninstall-finder-action": "./scripts/uninstall_md2pdf_quick_action.sh"
+  },
+  "scripts": {
+    "postinstall": "echo \"Mermaid CLI installed\""
+  },
+  "dependencies": {
+    "@mermaid-js/mermaid-cli": "10.9.1"
+  }
+}

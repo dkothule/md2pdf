@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Deepak Kothule
+#
+# Copy this file to one of:
+#   - $HOME/.config/md2pdf/config.env        (global defaults)
+#   - <folder-containing-markdown>/.md2pdfrc (project/doc defaults)
+# or pass it at runtime:
+#   md2pdf input.md --config /path/to/config.env
+#
+# All keys are optional.
+
+# PDF engine command used by pandoc.
+PDF_ENGINE=xelatex
+
+# Pandoc formatting columns.
+PANDOC_COLUMNS=200
+
+# Page margins.
+LR_MARGIN=0.7in
+TB_MARGIN=0.5in
+
+# Optional LaTeX header file (set empty to disable custom header).
+# Default uses bundled: assets/table-style.tex
+# TABLE_STYLE=/absolute/path/to/table-style.tex
+
+# Mermaid/Python executables (command name or absolute path).
+MERMAID_BIN=mmdc
+# Optional Mermaid CLI config JSON.
+# Default uses bundled: assets/mermaid.config.json
+# MERMAID_CONFIG=/absolute/path/to/mermaid.config.json
+
+# Mermaid asset format for LaTeX/PDF output (pdf, svg, png).
+# Default is svg to keep high-resolution vector Mermaid diagrams in PDF output.
+MERMAID_LATEX_FORMAT=svg
+
+# When rendering Mermaid to PDF (directly or via fallback), use fit-to-content page bounds.
+# This avoids page-sized Mermaid PDF assets that can force one diagram per page.
+MERMAID_PDF_FIT=true
+
+# When true, if Mermaid SVG contains foreignObject labels (common with flowchart/graph),
+# md2pdf auto-renders a Mermaid PDF fallback for that diagram to preserve labels in PDF.
+MERMAID_AUTO_PDF_FALLBACK=true
+
+PYTHON=python3
+
+# Optional puppeteer config file for mermaid-cli.
+# PUPPETEER_CFG=/absolute/path/to/puppeteer-config.json
+
+# Temporary Mermaid asset folder behavior.
+# If true, remove generated "<prefix>-<run-id>-images/" folder after conversion.
+CLEANUP_MERMAID_ASSETS=true
+
+# Prefix for generated Mermaid asset folder.
+MERMAID_ASSET_PREFIX=md2pdf-mermaid

@@ -1,0 +1,10 @@
+.venv/
+node_modules/
+.npm-cache/
+*.log
+*.pdf
+docs/*.pdf
+__pycache__/
+*.pyc
+mermaid-images/
+md2pdf-mermaid-*-images/
