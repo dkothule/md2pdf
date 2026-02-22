@@ -18,6 +18,27 @@ It keeps Mermaid diagrams sharp in PDF by rendering vector assets (SVG by defaul
 - Configurable defaults (`~/.config/md2pdf/config.env`, project `.md2pdfrc`, or `--config`).
 - Optional Finder Quick Action integration on macOS.
 
+## New Machine Bootstrap (No Homebrew or npm)
+
+If this is a fresh machine, install package manager/runtime first:
+
+macOS:
+
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+eval "$(/opt/homebrew/bin/brew shellenv)" || eval "$(/usr/local/bin/brew shellenv)"
+brew install node
+```
+
+Debian/Ubuntu:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y nodejs npm
+```
+
+Then continue with the install steps below.
+
 ## Install
 
 ### Frictionless install (recommended)
