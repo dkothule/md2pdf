@@ -20,18 +20,51 @@ It keeps Mermaid diagrams sharp in PDF by rendering vector assets (SVG by defaul
 
 ## Install
 
-### 1) Install system dependencies
+### Frictionless install (recommended)
 
-From repo checkout, install required tools:
+Prerequisite: Node.js + npm installed (required to install the npm package).
 
-```bash
-./install-system-deps.sh
-```
-
-### 2) Install md2pdf CLI
+1) Install md2pdf:
 
 ```bash
 npm i -g @dkothule/md2pdf
+```
+
+2) Install runtime dependencies (system packages + `pandocfilters`):
+
+```bash
+md2pdf-install-system-deps
+```
+
+Use `--yes` to skip the confirmation prompt (helpful for automation):
+
+```bash
+md2pdf-install-system-deps --yes
+```
+
+3) Verify:
+
+```bash
+md2pdf --version
+md2pdf --help
+```
+
+`md2pdf-install-system-deps` supports macOS (Homebrew) and Debian/Ubuntu.
+Run `md2pdf-install-system-deps --help` to see options.
+
+### Manual fallback (if helper script does not support your Linux distro)
+
+Install these dependencies yourself:
+
+- `pandoc`
+- LaTeX PDF engine (`xelatex` default)
+- `librsvg` / `rsvg-convert`
+- `python3` + `pip`
+- `node` + `npm`
+
+Then install the Python dependency:
+
+```bash
 python3 -m pip install pandocfilters
 ```
 
@@ -167,7 +200,7 @@ md2pdf ./tests/samples/mermaid-all-diagram-types.md --keep-mermaid-assets
 
 ## Keywords
 
-markdown to pdf, md to pdf, mermaid to pdf, mermaid svg, pandoc markdown pdf, markdown pdf cli, macOS markdown pdf, Linux markdown pdf
+markdown to pdf, md to pdf, md2pdf, mermaid to pdf, mermaid svg, pandoc markdown pdf, markdown pdf cli, macOS markdown pdf, Linux markdown pdf
 
 ## License
 
