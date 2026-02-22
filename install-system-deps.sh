@@ -179,7 +179,7 @@ ensure_xelatex_macos() {
   fi
 
   echo "Installing BasicTeX for xelatex..."
-  brew install --cask basictex
+  HOMEBREW_NO_AUTO_UPDATE=1 brew install --cask basictex
   ensure_tex_path_macos
 
   if command -v xelatex >/dev/null 2>&1; then
@@ -218,11 +218,28 @@ install_macos() {
     exit 1
   fi
 
-  brew update
-  brew install pandoc librsvg python
+  local brew_updated=1
+  if ! brew update; then
+    brew_updated=0
+    echo "Warning: Homebrew update failed; continuing without update." >&2
+    echo "If install fails due tap/network issues, retry with:" >&2
+    echo "  HOMEBREW_NO_AUTO_UPDATE=1 md2pdf-install-system-deps --yes" >&2
+  fi
+
+  if ! HOMEBREW_NO_AUTO_UPDATE=1 brew install pandoc librsvg python; then
+    echo "Error: Homebrew install failed for pandoc/librsvg/python." >&2
+    if [[ "$brew_updated" -eq 0 ]]; then
+      echo "A broken or slow third-party Homebrew tap may be blocking updates." >&2
+      echo "Inspect taps: brew tap" >&2
+      echo "If needed, untap the failing tap and retry." >&2
+      echo "Example:" >&2
+      echo "  brew untap macos-fuse-t/homebrew-cask" >&2
+    fi
+    exit 1
+  fi
 
   if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
-    brew install node
+    HOMEBREW_NO_AUTO_UPDATE=1 brew install node
   fi
 
   ensure_xelatex_macos

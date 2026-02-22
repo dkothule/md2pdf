@@ -57,6 +57,8 @@ npm i -g @dkothule/md2pdf
 md2pdf-install-system-deps --yes
 ```
 
+macOS recommendation: if Homebrew is healthy and network is stable, run `brew update` before this step for freshest formula metadata.
+
 If you prefer an interactive confirmation prompt, run:
 
 ```bash
@@ -232,6 +234,9 @@ md2pdf ./tests/samples/mermaid-all-diagram-types.md --keep-mermaid-assets
 - On macOS, if `xelatex` is still missing after `md2pdf-install-system-deps`:
   - Add TeX to PATH: `echo 'export PATH="/Library/TeX/texbin:$PATH"' >> ~/.zshrc && source ~/.zshrc`
   - If binary is still missing: `sudo /Library/TeX/texbin/tlmgr install collection-xetex`
+- On macOS, if Homebrew update times out during `md2pdf-install-system-deps`:
+  - Retry without auto-update: `HOMEBREW_NO_AUTO_UPDATE=1 md2pdf-install-system-deps --yes`
+  - If a third-party tap keeps failing, inspect taps (`brew tap`) and untap the failing one (example: `brew untap macos-fuse-t/homebrew-cask`)
 - On macOS Finder Quick Actions in `Downloads`, first-run privacy prompts can block temp-asset cleanup.
   - If conversion succeeded but cleanup warning appears, output PDF is still usable.
   - Remove leftover assets manually: `rm -rf ~/Downloads/md2pdf-mermaid-*-images`
