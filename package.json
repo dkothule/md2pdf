@@ -1,6 +1,6 @@
 {
   "name": "@dkothule/md2pdf",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Markdown to PDF converter with high-resolution Mermaid diagram rendering",
   "author": "Deepak Kothule",
   "license": "MIT",
@@ -44,6 +44,7 @@
   ],
   "bin": {
     "md2pdf": "./bin/md2pdf",
+    "md2pdf-install-system-deps": "./install-system-deps.sh",
     "md2pdf-install-finder-action": "./scripts/install_md2pdf_quick_action.sh",
     "md2pdf-uninstall-finder-action": "./scripts/uninstall_md2pdf_quick_action.sh"
   },

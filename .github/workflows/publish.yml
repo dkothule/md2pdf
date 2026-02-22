@@ -4,7 +4,6 @@ on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
 
 jobs:
   publish:
@@ -15,6 +14,16 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify tag commit is on main
+        run: |
+          git fetch origin main --depth=1
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "origin/main"; then
+            echo "Tagged commit $GITHUB_SHA is not on origin/main. Publishing is only allowed from main tags." >&2
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -31,6 +40,61 @@ jobs:
             echo "Tag version ($TAG_VERSION) does not match package.json version ($PKG_VERSION)." >&2
             exit 1
           fi
+
+      - name: Verify package version is newer than npm
+        run: |
+          PKG_NAME="$(node -p "require('./package.json').name")"
+          PKG_VERSION="$(node -p "require('./package.json').version")"
+          PUBLISHED_VERSION="$(npm view "$PKG_NAME" version 2>/dev/null || true)"
+
+          if [ -z "$PUBLISHED_VERSION" ]; then
+            echo "No published version found for $PKG_NAME. Skipping increment check."
+            exit 0
+          fi
+
+          echo "Published version: $PUBLISHED_VERSION"
+          echo "Candidate version: $PKG_VERSION"
+
+          node - "$PUBLISHED_VERSION" "$PKG_VERSION" <<'NODE'
+          function parseSemver(value) {
+            const match = value.match(
+              /^([0-9]+)\.([0-9]+)\.([0-9]+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/
+            );
+            if (!match) {
+              throw new Error(`Invalid semver: ${value}`);
+            }
+            return {
+              major: Number(match[1]),
+              minor: Number(match[2]),
+              patch: Number(match[3]),
+              prerelease: match[4] || null,
+            };
+          }
+
+          function compareSemver(a, b) {
+            if (a.major !== b.major) return a.major - b.major;
+            if (a.minor !== b.minor) return a.minor - b.minor;
+            if (a.patch !== b.patch) return a.patch - b.patch;
+
+            if (a.prerelease === b.prerelease) return 0;
+            if (a.prerelease === null) return 1;
+            if (b.prerelease === null) return -1;
+
+            return a.prerelease.localeCompare(b.prerelease, undefined, {
+              numeric: true,
+              sensitivity: "base",
+            });
+          }
+
+          const published = parseSemver(process.argv[2]);
+          const candidate = parseSemver(process.argv[3]);
+          if (compareSemver(candidate, published) <= 0) {
+            console.error(
+              `package.json version (${process.argv[3]}) must be greater than published version (${process.argv[2]}).`
+            );
+            process.exit(1);
+          }
+          NODE
 
       - name: Dry-run pack check
         run: npm pack --dry-run
