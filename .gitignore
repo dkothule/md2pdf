@@ -7,3 +7,4 @@ __pycache__/
 *.pyc
 mermaid-images/
 md2pdf-mermaid-*-images/
+local/
