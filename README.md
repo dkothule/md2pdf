@@ -201,6 +201,7 @@ Example config:
 PDF_RENDERER=latex
 CHROMIUM_MERMAID_FORMAT=png
 PDF_ENGINE=xelatex
+PANDOC_COLUMNS=120
 LR_MARGIN=0.7in
 TB_MARGIN=0.5in
 MERMAID_LATEX_FORMAT=svg
@@ -210,6 +211,26 @@ MERMAID_PDF_FIT=true
 MERMAID_AUTO_PDF_FALLBACK=true
 CLEANUP_MERMAID_ASSETS=true
 MERMAID_ASSET_PREFIX=md2pdf-mermaid
+```
+
+Table-width tuning (`PANDOC_COLUMNS`):
+
+- Wide tables clipping on the right in LaTeX output usually means Pandoc picked non-wrapping table columns.
+- Start with `PANDOC_COLUMNS=120` (default), lower to `100` if clipping persists, or raise toward `130` if wrapping is too aggressive.
+
+Set globally:
+
+```bash
+md2pdf --init
+# then edit ~/.config/md2pdf/config.env and add/update:
+PANDOC_COLUMNS=120
+```
+
+Set per project/folder:
+
+```bash
+# create/edit ./.md2pdfrc in your markdown folder and add/update:
+PANDOC_COLUMNS=120
 ```
 
 ## CLI reference
@@ -252,6 +273,7 @@ md2pdf ./tests/samples/mermaid-all-diagram-types.md --keep-mermaid-assets
 
 - `mmdc not found`: install dependencies and verify `MERMAID_BIN`.
 - Pipe-table rows render as plain text: `md2pdf` now auto-normalizes missing blank lines before `|` table headers during conversion.
+- Wide tables are cut off in LaTeX output: reduce `PANDOC_COLUMNS` (default is `120`) so Pandoc emits wrapped table columns instead of non-wrapping `lll` columns.
 - Lists after bold labels render as one paragraph: `md2pdf` now parses markdown with `lists_without_preceding_blankline`; no manual blank line is required.
 - Bullet lists have extra vertical space: trailing double-space hard breaks at end of list items are trimmed during normalization.
 - Flowchart/graph labels missing in PDF: keep `MERMAID_AUTO_PDF_FALLBACK=true`.

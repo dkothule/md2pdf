@@ -27,7 +27,8 @@ PDF_ENGINE=xelatex
 CHROMIUM_MERMAID_FORMAT=png
 
 # Pandoc formatting columns.
-PANDOC_COLUMNS=200
+# Keep this moderate so Pandoc can infer wrapped table columns for wide tables.
+PANDOC_COLUMNS=120
 
 # Page margins.
 LR_MARGIN=0.7in
