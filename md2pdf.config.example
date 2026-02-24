@@ -36,6 +36,13 @@ TB_MARGIN=0.5in
 
 # Optional LaTeX header file (set empty to disable custom header).
 # Default uses bundled: assets/table-style.tex
+# Display equations (`$$...$$`) are centered by default.
+# To left-align display equations in latex mode, point TABLE_STYLE to a custom
+# header that inputs the bundled style and enables fleqn, e.g.:
+#   \input{/absolute/path/to/assets/table-style.tex}
+#   \makeatletter
+#   \@fleqntrue
+#   \makeatother
 # TABLE_STYLE=/absolute/path/to/table-style.tex
 
 # Mermaid/Python executables (command name or absolute path).

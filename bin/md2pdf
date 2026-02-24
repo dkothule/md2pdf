@@ -711,7 +711,7 @@ LATEX_EMOJI_MONO_FONT="DejaVu Sans"
 PDF_RENDERER="latex"
 PDF_ENGINE="xelatex"
 CHROMIUM_BIN=""
-PANDOC_FROM_FORMAT="markdown+lists_without_preceding_blankline"
+PANDOC_FROM_FORMAT="markdown+lists_without_preceding_blankline+tex_math_dollars"
 # Keep moderate so Pandoc can infer wrapped LaTeX table columns on wide tables.
 PANDOC_COLUMNS="120"
 LR_MARGIN="0.7in"

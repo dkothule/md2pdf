@@ -11,6 +11,14 @@ This file is a playground document with a broad set of Mermaid diagram types you
 
 This page intentionally mixes emoji, symbols, and Mermaid diagrams so one sample file validates both text rendering and diagram quality.
 
+## LaTeX Math Equations
+
+- This is inline: $a^2 + b^2 = c^2$ and $\sqrt{3x-1}+(1+x)^2$
+- This expression uses `\$` to display a dollar sign: $\sqrt{\$4}$
+- To add a math expression as a block, start a new line and delimit the expression with two dollar symbols \$$.
+**The Cauchy-Schwarz Inequality**
+$$\left( \sum_{k=1}^n a_k b_k \right)^2 \leq \left( \sum_{k=1}^n a_k^2 \right) \left( \sum_{k=1}^n b_k^2 \right)$$
+
 ## 1. Flowchart
 
 ```mermaid

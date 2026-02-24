@@ -168,7 +168,7 @@ md2pdf uses:
 - `MERMAID_AUTO_PDF_FALLBACK=true` by default to preserve flowchart/graph node labels when SVG uses `foreignObject`.
 - `MERMAID_PDF_FIT=true` by default so Mermaid PDF fallback assets use tight bounds and do not force one-diagram-per-page.
 - `LATEX_EMOJI_MODE=auto` by default so XeLaTeX uses Twemoji mapping for detected emoji code points, then falls back to `DejaVu Sans`.
-- Pandoc input uses `markdown+lists_without_preceding_blankline` so list blocks after bold lead-ins render correctly.
+- Pandoc input uses `markdown+lists_without_preceding_blankline+tex_math_dollars` so list blocks after bold lead-ins render correctly and standard markdown math (`$...$`, `$$...$$`) is supported.
 - Conversion normalizes markdown by:
   - inserting missing blank lines before pipe-table headers,
   - removing trailing two-space hard-break markers on list-item lines (tight list spacing),
@@ -256,6 +256,7 @@ Renderer notes:
 - `chromium` mode is useful when you need browser-grade emoji/glyph rendering.
 - `CHROMIUM_MERMAID_FORMAT=svg|png` controls Mermaid asset format in Chromium mode (`png` default for stability).
 - In `latex` mode, `LATEX_EMOJI_MODE=auto` uses `twemojis` mapping, then `LATEX_EMOJI_MONO_FONT`.
+- Display equations (`$$...$$`) are centered by default.
 
 ## Test samples
 
@@ -276,6 +277,12 @@ md2pdf ./tests/samples/mermaid-all-diagram-types.md --keep-mermaid-assets
 - Wide tables are cut off in LaTeX output: reduce `PANDOC_COLUMNS` (default is `120`) so Pandoc emits wrapped table columns instead of non-wrapping `lll` columns.
 - Lists after bold labels render as one paragraph: `md2pdf` now parses markdown with `lists_without_preceding_blankline`; no manual blank line is required.
 - Bullet lists have extra vertical space: trailing double-space hard breaks at end of list items are trimmed during normalization.
+- Need left-aligned display equations in `latex` mode: create a custom TeX header file with:
+  - `\input{/absolute/path/to/assets/table-style.tex}`
+  - `\makeatletter`
+  - `\@fleqntrue`
+  - `\makeatother`
+  then set `TABLE_STYLE=/absolute/path/to/that-header.tex` in config.
 - Flowchart/graph labels missing in PDF: keep `MERMAID_AUTO_PDF_FALLBACK=true`.
 - Diagram taking a full page: keep `MERMAID_PDF_FIT=true`.
 - PDF engine missing: install `xelatex` or set `PDF_ENGINE`.
