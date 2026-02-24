@@ -84,7 +84,7 @@ Defaults:
 Before pandoc conversion, `bin/md2pdf` applies lightweight normalization:
 
 - Add a missing blank line before pipe-table headers so pipe tables parse reliably.
-- Use pandoc input mode `markdown+lists_without_preceding_blankline` so lists after bold lead-ins still parse as lists.
+- Use pandoc input mode `markdown+lists_without_preceding_blankline+tex_math_dollars` so lists after bold lead-ins still parse as lists and standard markdown math delimiters (`$...$`, `$$...$$`) are supported.
 - Trim trailing two-space hard-break markers on list-item lines to keep list spacing tight.
 - Remove variation selectors (`U+FE0E`, `U+FE0F`) from input text.
 - In LaTeX mode, map common Unicode symbols (`≥`, `≤`, `↗`) to LaTeX-safe equivalents via generated `newunicodechar` mappings.
